@@ -6,7 +6,6 @@
   <img src="https://img.shields.io/badge/Spring_Cloud-2024.0.1-brightgreen?style=for-the-badge&logo=spring" />
   <img src="https://img.shields.io/badge/MySQL-8.0-blue?style=for-the-badge&logo=mysql" />
   <img src="https://img.shields.io/badge/Docker-Compose-2496ED?style=for-the-badge&logo=docker" />
-  <img src="https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge" />
 </p>
 
 A backend for an ecommerce platform split into microservices. Built with Spring Boot 3 and Spring Cloud. Each service has its own database, they all register with Eureka, and everything goes through an API gateway that handles JWT validation before routing.
@@ -269,7 +268,3 @@ ecommerce-microservices/
 Each service follows the same layout: `controller → service → repository`, with `dto`, `model`, `exception`, `security`, and `config` packages.
 
 ---
-
-## License
-
-MIT
