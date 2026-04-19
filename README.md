@@ -1,4 +1,4 @@
-# 🛒 Ecommerce Microservices
+# Ecommerce Microservices
 
 <p align="center">
   <img src="https://img.shields.io/badge/Java-17-orange?style=for-the-badge&logo=java" />
@@ -9,312 +9,267 @@
   <img src="https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge" />
 </p>
 
-A **production-ready ecommerce backend** built with Spring Boot 3, Spring Cloud, and MySQL following a microservices architecture. Features JWT authentication, service discovery, an API gateway, and full Docker support.
+A backend for an ecommerce platform split into microservices. Built with Spring Boot 3 and Spring Cloud. Each service has its own database, they all register with Eureka, and everything goes through an API gateway that handles JWT validation before routing.
 
 ---
 
-## 📐 Architecture
+## Architecture
 
 ```
-                        ┌─────────────────────────┐
-         Clients ──────▶│     API Gateway :8080    │
-                        │  (JWT filter + routing)  │
-                        └────────────┬────────────┘
-                                     │  lb:// (Eureka)
-              ┌──────────────────────┼──────────────────────┐
-              ▼                      ▼                       ▼
-     ┌────────────────┐   ┌──────────────────┐   ┌──────────────────┐
-     │  user-service  │   │ product-service  │   │  order-service   │
-     │    :8081       │   │     :8082        │   │     :8083        │
-     └───────┬────────┘   └────────┬─────────┘   └────────┬─────────┘
-             │                     │                       │
-         users_db            products_db              orders_db
-             └─────────────────────┴───────────────────────┘
-                                   │
-                             MySQL :3306
+                     ┌─────────────────────────┐
+      Clients ──────▶│    API Gateway :8080     │
+                     │  (JWT check + routing)   │
+                     └───────────┬─────────────┘
+                                 │  lb:// via Eureka
+           ┌─────────────────────┼────────────────────┐
+           ▼                     ▼                     ▼
+  ┌────────────────┐   ┌──────────────────┐   ┌──────────────────┐
+  │  user-service  │   │ product-service  │   │  order-service   │
+  │    :8081       │   │     :8082        │   │     :8083        │
+  └───────┬────────┘   └───────┬──────────┘   └───────┬──────────┘
+          │                    │                       │
+      users_db           products_db              orders_db
+          └────────────────────┴───────────────────────┘
+                               │
+                         MySQL :3306
 
-                   ┌─────────────────────────┐
-                   │   Eureka Server :8761    │
-                   │   (service registry)     │
-                   └─────────────────────────┘
-```
-
----
-
-## 🗂️ Project Structure
-
-```
-ecommerce-microservices/
-├── eureka-server/          # Service discovery (port 8761)
-├── api-gateway/            # Single entry point + JWT validation (port 8080)
-├── user-service/           # Auth + User CRUD (port 8081)
-├── product-service/        # Product catalog + search (port 8082)
-├── order-service/          # Order management + status machine (port 8083)
-├── docker-compose.yml      # One-command full stack startup
-├── init-db.sql             # MySQL databases + users bootstrap
-├── .gitignore
-└── README.md
+               ┌──────────────────────────┐
+               │    Eureka Server :8761   │
+               └──────────────────────────┘
 ```
 
 ---
 
-## 🚀 Quick Start
+## Services
 
-### Prerequisites
-- **Java 17+**
-- **Maven 3.8+** (or use the included `./mvnw`)
-- **Docker + Docker Compose** (for containerised run)
-- **MySQL 8** (for local run only)
+| Service | Port | What it does |
+|---------|------|--------------|
+| api-gateway | 8080 | single entry point, validates JWT, routes to services |
+| user-service | 8081 | register/login, user management |
+| product-service | 8082 | product catalog, categories, search |
+| order-service | 8083 | place orders, track status |
+| eureka-server | 8761 | service registry (Eureka dashboard) |
 
 ---
 
-### ▶️ Option 1 — Docker (Recommended)
+## Running it
 
-**Step 1: Build all JARs**
+### With Docker (easiest)
+
+You need Docker and Docker Compose installed. First build all the JARs:
+
 ```bash
 for svc in eureka-server user-service product-service order-service api-gateway; do
   cd $svc && ./mvnw clean package -DskipTests && cd ..
 done
 ```
 
-**Step 2: Start the full stack**
+Then start everything:
+
 ```bash
 docker compose up --build
 ```
 
-**Step 3: Verify**
-- Eureka Dashboard → http://localhost:8761
-- API Gateway → http://localhost:8080
+Give it about 30 seconds to start up. Check http://localhost:8761 to see if all services registered.
 
----
+### Running locally
 
-### ▶️ Option 2 — Run Locally (without Docker)
+If you'd rather run without Docker, you need MySQL running locally first. Create the databases:
 
-**Step 1:** Start MySQL and run:
 ```bash
 mysql -u root -p < init-db.sql
 ```
 
-**Step 2:** Start each service in a separate terminal, **in order**:
+Then start each service in a separate terminal, starting with eureka:
+
 ```bash
-# 1 — Service Discovery (start first)
+# start this first
 cd eureka-server && ./mvnw spring-boot:run
 
-# 2 — Business services (any order)
+# then these in any order
 cd user-service    && ./mvnw spring-boot:run
 cd product-service && ./mvnw spring-boot:run
 cd order-service   && ./mvnw spring-boot:run
 
-# 3 — Gateway (start last)
+# gateway last
 cd api-gateway && ./mvnw spring-boot:run
 ```
 
 ---
 
-## 🔒 Authentication Flow
+## Auth
 
-All requests must go through the **API Gateway on port 8080**.
+All API calls go through the gateway on port 8080.
 
-```
-1.  POST /api/v1/auth/register   →  create account
-2.  POST /api/v1/auth/login      →  receive JWT token
-3.  Add header to every request:  Authorization: Bearer <token>
-4.  Gateway validates token → injects X-Auth-User header → routes to service
-```
+Register and get a token first:
 
-**Register example:**
-```json
-POST /api/v1/auth/register
-{
-  "name": "Venkatesh",
-  "email": "venkatesh@example.com",
-  "password": "secret123"
-}
+```bash
+# register
+curl -X POST http://localhost:8080/api/v1/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Venkatesh","email":"v@example.com","password":"pass123"}'
+
+# login
+curl -X POST http://localhost:8080/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"v@example.com","password":"pass123"}'
 ```
 
-**Login example:**
-```json
-POST /api/v1/auth/login
-{
-  "email": "venkatesh@example.com",
-  "password": "secret123"
-}
+Login returns a JWT. Add it to requests that need auth:
 
-// Response
-{
-  "success": true,
-  "data": { "token": "eyJhbGciOiJIUzI1NiJ9..." }
-}
+```
+Authorization: Bearer eyJhbGciOiJIUzI1NiJ9...
 ```
 
 ---
 
-## 📡 API Reference
+## API
 
-### 👤 Users (`/api/v1/users`)
-| Method | Endpoint | Auth | Description |
-|--------|----------|:----:|-------------|
-| POST | `/api/v1/auth/register` | ❌ | Register new user |
-| POST | `/api/v1/auth/login` | ❌ | Login — returns JWT |
-| GET | `/api/v1/users` | ✅ | Get all users (paginated) |
-| GET | `/api/v1/users/{id}` | ✅ | Get user by ID |
-| DELETE | `/api/v1/users/{id}` | ✅ | Delete user |
+### Users
 
-### 📦 Products (`/api/v1/products`)
-| Method | Endpoint | Auth | Description |
-|--------|----------|:----:|-------------|
-| GET | `/api/v1/products` | ❌ | List all active products |
-| GET | `/api/v1/products/{id}` | ❌ | Get product by ID |
-| GET | `/api/v1/products/category/{category}` | ❌ | Filter by category |
-| GET | `/api/v1/products/search?name=` | ❌ | Search by name |
-| POST | `/api/v1/products` | ✅ | Create product |
-| PATCH | `/api/v1/products/{id}` | ✅ | Partial update |
-| PATCH | `/api/v1/products/{id}/deactivate` | ✅ | Soft-delete |
-| DELETE | `/api/v1/products/{id}` | ✅ | Hard-delete |
+| Method | Path | Auth needed |
+|--------|------|:-----------:|
+| POST | `/api/v1/auth/register` | no |
+| POST | `/api/v1/auth/login` | no |
+| GET | `/api/v1/users` | yes |
+| GET | `/api/v1/users/{id}` | yes |
+| DELETE | `/api/v1/users/{id}` | yes |
 
-**Product categories:** `ELECTRONICS` `CLOTHING` `BOOKS` `HOME_AND_KITCHEN` `SPORTS` `BEAUTY` `TOYS` `AUTOMOTIVE` `GROCERY` `OTHER`
+### Products
 
-**Create product example:**
+GET requests are public. Everything else needs a token.
+
+| Method | Path | Auth needed |
+|--------|------|:-----------:|
+| GET | `/api/v1/products` | no |
+| GET | `/api/v1/products/{id}` | no |
+| GET | `/api/v1/products/category/{category}` | no |
+| GET | `/api/v1/products/search?name=phone` | no |
+| POST | `/api/v1/products` | yes |
+| PATCH | `/api/v1/products/{id}` | yes |
+| PATCH | `/api/v1/products/{id}/deactivate` | yes |
+| DELETE | `/api/v1/products/{id}` | yes |
+
+Categories: `ELECTRONICS`, `CLOTHING`, `BOOKS`, `HOME_AND_KITCHEN`, `SPORTS`, `BEAUTY`, `TOYS`, `AUTOMOTIVE`, `GROCERY`, `OTHER`
+
+Example - create a product:
+
 ```json
 POST /api/v1/products
 Authorization: Bearer <token>
 
 {
   "name": "iPhone 15",
-  "description": "Apple iPhone 15 128GB",
+  "description": "128GB, black",
   "price": 79999.00,
   "stockQuantity": 50,
-  "category": "ELECTRONICS",
-  "imageUrl": "https://example.com/iphone15.jpg"
+  "category": "ELECTRONICS"
 }
 ```
 
-### 🧾 Orders (`/api/v1/orders`)
-| Method | Endpoint | Auth | Description |
-|--------|----------|:----:|-------------|
-| POST | `/api/v1/orders` | ✅ | Place new order |
-| GET | `/api/v1/orders/{id}` | ✅ | Get order by ID |
-| GET | `/api/v1/orders` | ✅ | All orders (paginated) |
-| GET | `/api/v1/orders/user/{userId}` | ✅ | Orders by user |
-| GET | `/api/v1/orders/user/{userId}/status/{status}` | ✅ | Filter by status |
-| PATCH | `/api/v1/orders/{id}/status` | ✅ | Update order status |
-| PATCH | `/api/v1/orders/{id}/cancel` | ✅ | Cancel order |
+### Orders
 
-**Place order example:**
+All order endpoints require auth.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/v1/orders` | place an order |
+| GET | `/api/v1/orders/{id}` | get one order |
+| GET | `/api/v1/orders` | all orders (paginated) |
+| GET | `/api/v1/orders/user/{userId}` | orders for a user |
+| GET | `/api/v1/orders/user/{userId}/status/{status}` | filter by status |
+| PATCH | `/api/v1/orders/{id}/status` | update status |
+| PATCH | `/api/v1/orders/{id}/cancel` | cancel |
+
+Example - place an order:
+
 ```json
 POST /api/v1/orders
 Authorization: Bearer <token>
 
 {
   "userId": 1,
-  "shippingAddress": "123 Main St, Hyderabad, India",
+  "shippingAddress": "123 MG Road, Hyderabad",
   "items": [
     {
       "productId": 1,
       "productName": "iPhone 15",
-      "quantity": 2,
+      "quantity": 1,
       "unitPrice": 79999.00
     }
   ]
 }
 ```
 
----
-
-## 📦 Order Status Machine
+#### Order status flow
 
 ```
-  PENDING ──▶ CONFIRMED ──▶ SHIPPED ──▶ DELIVERED
-     │              │
-     └──────────────┴──▶ CANCELLED
+PENDING → CONFIRMED → SHIPPED → DELIVERED
+   ↓            ↓
+CANCELLED   CANCELLED
 ```
 
-| Transition | Allowed |
-|-----------|---------|
-| PENDING → CONFIRMED | ✅ |
-| PENDING → CANCELLED | ✅ |
-| CONFIRMED → SHIPPED | ✅ |
-| CONFIRMED → CANCELLED | ✅ |
-| SHIPPED → DELIVERED | ✅ |
-| DELIVERED → any | ❌ |
-| CANCELLED → any | ❌ |
+Once delivered or cancelled, the status can't change.
 
 ---
 
-## 📖 Swagger / OpenAPI
+## Swagger UI
 
-Each service exposes interactive API docs (accessible directly, bypass gateway):
+Each service has its own Swagger UI running directly (no gateway):
 
-| Service | Swagger UI |
-|---------|-----------|
-| user-service | http://localhost:8081/swagger-ui.html |
-| product-service | http://localhost:8082/swagger-ui.html |
-| order-service | http://localhost:8083/swagger-ui.html |
+- user-service → http://localhost:8081/swagger-ui.html
+- product-service → http://localhost:8082/swagger-ui.html
+- order-service → http://localhost:8083/swagger-ui.html
 
 ---
 
-## ⚙️ Environment Variables
+## Config
 
-Docker Compose overrides these automatically. For local runs, edit the respective `application.properties`.
+The default config works out of the box for local dev. For Docker, the compose file overrides the datasource URLs and Eureka address automatically.
 
-| Variable | Default | Used By |
-|----------|---------|---------|
-| `SPRING_DATASOURCE_URL` | `jdbc:mysql://localhost:3306/...` | All services |
-| `SPRING_DATASOURCE_USERNAME` | `user_service` / `product_service` / `order_service` | All services |
-| `SPRING_DATASOURCE_PASSWORD` | `user123` / `product123` / `order123` | All services |
-| `EUREKA_CLIENT_SERVICEURL_DEFAULTZONE` | `http://localhost:8761/eureka/` | All services + gateway |
-| `APP_JWT_SECRET` | 256-bit hex key | All services + gateway |
-| `APP_JWT_EXPIRATION_MS` | `86400000` (24 h) | user-service |
+Important env vars if you need to override:
 
-> ⚠️ **Change the JWT secret before deploying to production!**
+| Var | Default |
+|-----|---------|
+| `SPRING_DATASOURCE_URL` | `jdbc:mysql://localhost:3306/...` |
+| `EUREKA_CLIENT_SERVICEURL_DEFAULTZONE` | `http://localhost:8761/eureka/` |
+| `APP_JWT_SECRET` | hex key in application.properties |
 
----
-
-## 🛠️ Tech Stack
-
-| Layer | Technology |
-|-------|-----------|
-| Language | Java 17 |
-| Framework | Spring Boot 3.4.5 |
-| Service Discovery | Spring Cloud Netflix Eureka 2024.0.1 |
-| API Gateway | Spring Cloud Gateway |
-| Security | Spring Security + JJWT 0.12.6 |
-| Database | MySQL 8.0 |
-| ORM | Spring Data JPA / Hibernate |
-| API Docs | SpringDoc OpenAPI 3 (Swagger UI) |
-| Containerisation | Docker + Docker Compose |
-| Build Tool | Maven (Maven Wrapper included) |
-| Boilerplate | Lombok |
+> **Note:** Change the JWT secret before putting this anywhere public.
 
 ---
 
-## 📋 Service Port Summary
+## Tech used
 
-| Service | Port |
-|---------|------|
-| API Gateway | **8080** |
-| User Service | 8081 |
-| Product Service | 8082 |
-| Order Service | 8083 |
-| Eureka Server | 8761 |
-| MySQL | 3306 |
-
----
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/your-feature`
-3. Commit your changes: `git commit -m "Add your feature"`
-4. Push to the branch: `git push origin feature/your-feature`
-5. Open a Pull Request
+- Java 17
+- Spring Boot 3.4.5
+- Spring Cloud 2024.0.1 (Eureka + Gateway)
+- Spring Security + JJWT 0.12.6
+- MySQL 8 / Spring Data JPA
+- SpringDoc OpenAPI (Swagger UI)
+- Docker + Docker Compose
+- Lombok, Maven
 
 ---
 
-## 📄 License
+## Project structure
 
-This project is licensed under the **MIT License** — feel free to use it for learning or as a base for your own projects.
+```
+ecommerce-microservices/
+├── eureka-server/
+├── api-gateway/
+├── user-service/
+├── product-service/
+├── order-service/
+├── docker-compose.yml
+├── init-db.sql
+└── README.md
+```
+
+Each service follows the same layout: `controller → service → repository`, with `dto`, `model`, `exception`, `security`, and `config` packages.
 
 ---
 
-<p align="center">Built with ❤️ by <strong>Venkatesh</strong></p>
+## License
+
+MIT
